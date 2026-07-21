@@ -86,6 +86,7 @@ void PrintMapTable(NSMapTable *mt)
 		_objectsProcessed = NSCreateMapTable(NSNonRetainedObjectMapKeyCallBacks, NSObjectMapValueCallBacks, 0);
 		_objectsDictionary = [NSMutableDictionary dictionary];
 		_classesDictionary = [NSMutableDictionary dictionary];
+		_nextFallbackOid = 100000;
 	}
 	return self;
 }
@@ -160,7 +161,7 @@ void PrintMapTable(NSMapTable *mt)
 
 	if (n == 0)
 	{
-		n = (int)[obj hash];
+		n = _nextFallbackOid++;
 	}
 
 	NSString *value = nil;

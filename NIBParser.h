@@ -40,6 +40,7 @@
 
 	XMLDocument *_document;
 	NSMapTable *_objectsProcessed;
+	int _nextFallbackOid;
 }
 
 - (id) initWithNibNamed: (NSString *)nibNamed;

@@ -26,3 +26,6 @@ nib2xib_OBJC_FILES = \
 nib2xib_TOOL_LIBS = -lgnustep-gui -lgnustep-base
 
 include $(GNUSTEP_MAKEFILES)/tool.make
+
+check::
+	$(MAKE) -C Tests check

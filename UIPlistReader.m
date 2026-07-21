@@ -295,6 +295,22 @@ static int extractOid(NSString *str)
   NSArray *arrData[] = { oidsKeys, oidsValues, objectsKeys, objectsValues,
                          namesKeys, namesValues };
   NSUInteger arrIndices[13];
+
+  // Build NSConnections array with connector objects
+  NSMutableArray *connections = [NSMutableArray array];
+  for (NSDictionary *objDict in _sortedObjects)
+    {
+      NSString *isa = [objDict objectForKey: @"isa"];
+      if ([isa isEqualToString: @"NSNibControlConnector"]
+       || [isa isEqualToString: @"NSNibOutletConnector"])
+        {
+          int oidInt = [[objDict objectForKey: @"id"] intValue];
+          NSNumber *index = [_oidToIndex objectForKey: [NSNumber numberWithInt: oidInt]];
+          if (index)
+            [connections addObject: makeCFSUID([index unsignedIntegerValue])];
+        }
+    }
+
   for (int i = 0; i < 6; i++)
     {
       NSMutableDictionary *aEntry = [NSMutableDictionary dictionary];
@@ -303,8 +319,16 @@ static int extractOid(NSString *str)
         [aEntry setObject: arrData[i] forKey: @"NS.objects"];
       arrIndices[i] = ADD_ENTRY(aEntry);
     }
-  // Empty arrays
-  for (int i = 6; i < 13; i++)
+  // NSConnections - populate with connector objects
+  {
+    NSMutableDictionary *aEntry = [NSMutableDictionary dictionary];
+    [aEntry setObject: @"__tmp_class__" forKey: @"__tmp_class__"];
+    if ([connections count] > 0)
+      [aEntry setObject: connections forKey: @"NS.objects"];
+    arrIndices[6] = ADD_ENTRY(aEntry);
+  }
+  // Remaining empty arrays (NSAccessibility*, NSClasses*, NSVisibleWindows)
+  for (int i = 7; i < 13; i++)
     {
       NSMutableDictionary *aEntry = [NSMutableDictionary dictionary];
       [aEntry setObject: @"__tmp_class__" forKey: @"__tmp_class__"];

@@ -16,8 +16,6 @@ static NSDictionary *makeCFSUID(NSUInteger index)
                                      forKey: @"CF$UID"];
 }
 
-
-
 static id convertValue(id value, NSDictionary *oidToIndex)
 {
   if (value == nil)
@@ -27,7 +25,6 @@ static id convertValue(id value, NSDictionary *oidToIndex)
     {
       NSString *str = (NSString *)value;
 
-      // OpenStep plist may return numeric values as strings; convert back
       if (![str hasPrefix: OidRefPrefix])
         {
           NSScanner *sc = [NSScanner scannerWithString: str];
@@ -44,7 +41,8 @@ static id convertValue(id value, NSDictionary *oidToIndex)
         {
           NSUInteger prefixLen = [OidRefPrefix length];
           NSUInteger suffixLen = [OidRefSuffix length];
-          NSString *numStr = [str substringWithRange: NSMakeRange(prefixLen, [str length] - prefixLen - suffixLen)];
+          NSString *numStr = [str substringWithRange: NSMakeRange(prefixLen,
+            [str length] - prefixLen - suffixLen)];
           int oid = [numStr intValue];
           NSNumber *index = [oidToIndex objectForKey: [NSNumber numberWithInt: oid]];
           if (index)
@@ -93,7 +91,8 @@ static int extractOid(NSString *str)
     {
       NSUInteger prefixLen = [OidRefPrefix length];
       NSUInteger suffixLen = [OidRefSuffix length];
-      NSString *numStr = [str substringWithRange: NSMakeRange(prefixLen, [str length] - prefixLen - suffixLen)];
+      NSString *numStr = [str substringWithRange: NSMakeRange(prefixLen,
+        [str length] - prefixLen - suffixLen)];
       return [numStr intValue];
     }
   return 0;
@@ -200,99 +199,85 @@ static int extractOid(NSString *str)
     return NSOrderedSame;
   }] retain];
 
-  NSUInteger userCount = [_sortedObjects count];
-  NSUInteger arrayCount = 14; // 13 NS-prefixed arrays + 1 frameworks string
-
-  // Collect all unique class names
+  // Collect class names
   NSMutableSet *classNames = [NSMutableSet set];
   [classNames addObject: @"NSIBObjectData"];
   [classNames addObject: @"NSMutableArray"];
+  [classNames addObject: @"NSNumber"];
+  [classNames addObject: @"NSString"];
   for (NSDictionary *objDict in _sortedObjects)
     {
       NSString *clsName = [objDict objectForKey: @"isa"];
       if (clsName)
         [classNames addObject: clsName];
     }
-  NSArray *sortedClasses = [[classNames allObjects] sortedArrayUsingSelector: @selector(compare:)];
-  NSUInteger classCount = [sortedClasses count];
 
-  // Pre-computed $objects layout:
-  // 0: $null
-  // 1: NSIBObjectData (filled at end)
-  // 2..(2+userCount-1): user objects
-  // (2+userCount)..(2+userCount+arrayCount-1): array entries
-  // (2+userCount+arrayCount)..: class definitions
-  NSUInteger userStart = 2;
-  NSUInteger arrayStart = userStart + userCount;
-  NSUInteger classStart = arrayStart + arrayCount;
-
-  // Pre-populate _classDefs with known indices
-  NSUInteger ci = classStart;
-  for (NSString *className in sortedClasses)
-    {
-      [_classDefs setObject: [NSNumber numberWithUnsignedInteger: ci] forKey: className];
-      ci++;
-    }
-
-  // Build oid → $objects index mapping (use integer keys to avoid NSNumber type mismatch)
-  NSUInteger userIdx = userStart;
-  for (NSDictionary *objDict in _sortedObjects)
-    {
-      NSNumber *oid = [objDict objectForKey: @"id"];
-      int oidInt = [oid intValue];
-      [_oidToIndex setObject: [NSNumber numberWithUnsignedInteger: userIdx]
-                      forKey: [NSNumber numberWithInt: oidInt]];
-      userIdx++;
-    }
-
-
-
-  // Initialize $objects with placeholders
   _objectsArray = [[NSMutableArray alloc] init];
-  NSUInteger totalSize = 1 + 1 + userCount + arrayCount + classCount;
-  for (NSUInteger i = 0; i < totalSize; i++)
-    [_objectsArray addObject: [NSNull null]];
-  [_objectsArray replaceObjectAtIndex: 0 withObject: @"$null"];
+  _classDefs = [[NSMutableDictionary alloc] init];
 
-  // Build array data for NSIBObjectData's NS-prefixed keys
+#define ADD_ENTRY(obj) ({ id _o = (obj); [_objectsArray addObject: _o]; [_objectsArray count] - 1; })
+
+  // 0: $null
+  [_objectsArray addObject: @"$null"];
+  // 1: placeholder for NSIBObjectData
+  [_objectsArray addObject: [NSNull null]];
+
+  // Phase 1: user objects (placeholders) + build array data
+  int maxOid = 0;
   NSMutableArray *oidsKeys = [NSMutableArray array];
   NSMutableArray *oidsValues = [NSMutableArray array];
   NSMutableArray *objectsKeys = [NSMutableArray array];
   NSMutableArray *objectsValues = [NSMutableArray array];
   NSMutableArray *namesKeys = [NSMutableArray array];
   NSMutableArray *namesValues = [NSMutableArray array];
+  NSUInteger firstUserIdx = [_objectsArray count];
 
-  int maxOid = 0;
   for (NSDictionary *objDict in _sortedObjects)
     {
-      NSNumber *oid = [objDict objectForKey: @"id"];
-      int oidInt = [oid intValue];
+      int oidInt = [[objDict objectForKey: @"id"] intValue];
       if (oidInt > maxOid) maxOid = oidInt;
 
-      NSNumber *index = [_oidToIndex objectForKey: [NSNumber numberWithInt: oidInt]];
-      NSDictionary *ref = makeCFSUID([index unsignedIntegerValue]);
+      // User object placeholder (keys filled in phase 2)
+      NSMutableDictionary *entry = [NSMutableDictionary dictionary];
+      NSUInteger objIdx = ADD_ENTRY(entry);
+      [_oidToIndex setObject: [NSNumber numberWithUnsignedInteger: objIdx]
+                      forKey: [NSNumber numberWithInt: oidInt]];
 
-      [oidsKeys addObject: ref];
-      [oidsValues addObject: [NSNumber numberWithInt: oidInt]];
-      [objectsKeys addObject: ref];
-      [objectsValues addObject: ref];
-      [namesKeys addObject: ref];
-
-      NSString *clsName = [objDict objectForKey: @"isa"];
-      [namesValues addObject: clsName ? clsName : @""];
+      NSDictionary *thisRef = makeCFSUID(objIdx);
+      [oidsKeys addObject: thisRef];
+      [oidsValues addObject: [NSNumber numberWithInt: oidInt]];  // placeholder, fix later
+      [objectsKeys addObject: thisRef];
+      [objectsValues addObject: thisRef];
+      [namesKeys addObject: thisRef];
+      [namesValues addObject: [objDict objectForKey: @"isa"] ?: @""];  // placeholder
     }
 
-  // Fill user objects at slots [userStart..userStart+userCount-1]
-  NSUInteger obIdx = userStart;
+  // Phase 2: add value entries for oids and names
+  NSMutableArray *oidsValRefs = [NSMutableArray array];
+  NSMutableArray *namesValRefs = [NSMutableArray array];
+  for (int i = 0; i < [_sortedObjects count]; i++)
+    {
+      int oidInt = [[[_sortedObjects objectAtIndex: i] objectForKey: @"id"] intValue];
+      NSUInteger oidValIdx = ADD_ENTRY([NSNumber numberWithInt: oidInt]);
+      [oidsValRefs addObject: makeCFSUID(oidValIdx)];
+
+      NSString *nameStr = [[_sortedObjects objectAtIndex: i] objectForKey: @"isa"] ?: @"";
+      NSUInteger nameValIdx = ADD_ENTRY(nameStr);
+      [namesValRefs addObject: makeCFSUID(nameValIdx)];
+    }
+  // Replace placeholders in oidsValues and namesValues with real CF$UID refs
+  [oidsValues removeAllObjects];
+  [oidsValues addObjectsFromArray: oidsValRefs];
+  [namesValues removeAllObjects];
+  [namesValues addObjectsFromArray: namesValRefs];
+
+  // Phase 3: fill user object keys
+  NSUInteger ui = firstUserIdx;
   for (NSDictionary *objDict in _sortedObjects)
     {
-      NSString *clsName = [objDict objectForKey: @"isa"];
       NSDictionary *keys = [objDict objectForKey: @"keys"];
-      NSNumber *classIdx = [_classDefs objectForKey: clsName];
-
-      NSMutableDictionary *entry = [NSMutableDictionary dictionary];
-      [entry setObject: makeCFSUID([classIdx unsignedIntegerValue]) forKey: @"$class"];
-
+      NSMutableDictionary *entry = [_objectsArray objectAtIndex: ui];
+      [entry setObject: @"__tmp_class__" forKey: @"__tmp_class__"];
       if (keys)
         {
           for (NSString *key in keys)
@@ -303,38 +288,34 @@ static int extractOid(NSString *str)
                 [entry setObject: converted forKey: key];
             }
         }
-      [_objectsArray replaceObjectAtIndex: obIdx withObject: entry];
-      obIdx++;
+      ui++;
     }
 
-  // Fill array entries at slots [arrayStart..arrayStart+arrayCount-1]
-  NSUInteger ai = arrayStart;
-  NSNumber *arrClassIdx = [_classDefs objectForKey: @"NSMutableArray"];
-  NSArray *allArrData[] = {
-    oidsKeys, oidsValues, objectsKeys, objectsValues,
-    namesKeys, namesValues,
-    [NSArray array], [NSArray array], [NSArray array], [NSArray array],
-    [NSArray array], [NSArray array], [NSArray array]
-  };
-  for (int i = 0; i < 13; i++)
+  // Phase 3: support arrays (all CF$UID refs, no raw values)
+  NSArray *arrData[] = { oidsKeys, oidsValues, objectsKeys, objectsValues,
+                         namesKeys, namesValues };
+  NSUInteger arrIndices[13];
+  for (int i = 0; i < 6; i++)
     {
       NSMutableDictionary *aEntry = [NSMutableDictionary dictionary];
-      [aEntry setObject: makeCFSUID([arrClassIdx unsignedIntegerValue]) forKey: @"$class"];
-      if ([allArrData[i] count] > 0)
-        [aEntry setObject: allArrData[i] forKey: @"NS.objects"];
-      [_objectsArray replaceObjectAtIndex: ai withObject: aEntry];
-      ai++;
+      [aEntry setObject: @"__tmp_class__" forKey: @"__tmp_class__"];
+      if ([arrData[i] count] > 0)
+        [aEntry setObject: arrData[i] forKey: @"NS.objects"];
+      arrIndices[i] = ADD_ENTRY(aEntry);
     }
-
-  // Frameworks string
-  [_objectsArray replaceObjectAtIndex: ai withObject: @"IBCocoaFramework"];
-  NSUInteger frameworksIdx = ai;
-  ai++;
-
-  // Fill class definitions at slots [classStart..]
-  for (NSString *className in sortedClasses)
+  // Empty arrays
+  for (int i = 6; i < 13; i++)
     {
-      // Build full class hierarchy using runtime introspection
+      NSMutableDictionary *aEntry = [NSMutableDictionary dictionary];
+      [aEntry setObject: @"__tmp_class__" forKey: @"__tmp_class__"];
+      arrIndices[i] = ADD_ENTRY(aEntry);
+    }
+  // Frameworks string
+  NSUInteger frameworksIdx = ADD_ENTRY(@"IBCocoaFramework");
+
+  // Phase 4: class definitions
+  for (NSString *className in [classNames allObjects])
+    {
       NSMutableArray *hierarchy = [NSMutableArray array];
       [hierarchy addObject: className];
       Class cls = NSClassFromString(className);
@@ -345,48 +326,63 @@ static int extractOid(NSString *str)
         }
       else
         {
-          // Fallback for unknown classes
           [hierarchy addObject: @"NSObject"];
         }
-
       NSMutableDictionary *classDict = [NSMutableDictionary dictionary];
       [classDict setObject: hierarchy forKey: @"$classes"];
       [classDict setObject: className forKey: @"$classname"];
-      NSNumber *idx = [_classDefs objectForKey: className];
-      [_objectsArray replaceObjectAtIndex: [idx unsignedIntegerValue] withObject: classDict];
+      NSUInteger clsIdx = ADD_ENTRY(classDict);
+      [_classDefs setObject: [NSNumber numberWithUnsignedInteger: clsIdx] forKey: className];
     }
 
-  // Fill NSIBObjectData at index 1
+  // Fix user object $class refs
+  ui = firstUserIdx;
+  for (NSDictionary *objDict in _sortedObjects)
+    {
+      NSString *clsName = [objDict objectForKey: @"isa"];
+      NSMutableDictionary *entry = [_objectsArray objectAtIndex: ui];
+      [entry removeObjectForKey: @"__tmp_class__"];
+      NSNumber *classIdx = [_classDefs objectForKey: clsName];
+      [entry setObject: makeCFSUID([classIdx unsignedIntegerValue]) forKey: @"$class"];
+      ui++;
+    }
+
+  // Fix array $class refs
+  NSNumber *arrClassIdx = [_classDefs objectForKey: @"NSMutableArray"];
+  for (int i = 0; i < 13; i++)
+    {
+      NSMutableDictionary *entry = [_objectsArray objectAtIndex: arrIndices[i]];
+      [entry removeObjectForKey: @"__tmp_class__"];
+      [entry setObject: makeCFSUID([arrClassIdx unsignedIntegerValue]) forKey: @"$class"];
+    }
+
+  // Phase 5: NSIBObjectData at index 1
   NSMutableDictionary *od = [NSMutableDictionary dictionary];
   NSNumber *odClassIdx = [_classDefs objectForKey: @"NSIBObjectData"];
   [od setObject: makeCFSUID([odClassIdx unsignedIntegerValue]) forKey: @"$class"];
 
-  NSUInteger ba = arrayStart;
-  [od setObject: makeCFSUID(ba + 0) forKey: @"NSOidsKeys"];
-  [od setObject: makeCFSUID(ba + 1) forKey: @"NSOidsValues"];
-  [od setObject: makeCFSUID(ba + 2) forKey: @"NSObjectsKeys"];
-  [od setObject: makeCFSUID(ba + 3) forKey: @"NSObjectsValues"];
-  [od setObject: makeCFSUID(ba + 4) forKey: @"NSNamesKeys"];
-  [od setObject: makeCFSUID(ba + 5) forKey: @"NSNamesValues"];
-  [od setObject: makeCFSUID(ba + 6) forKey: @"NSConnections"];
-  [od setObject: makeCFSUID(ba + 7) forKey: @"NSAccessibilityConnectors"];
-  [od setObject: makeCFSUID(ba + 8) forKey: @"NSAccessibilityOidsKeys"];
-  [od setObject: makeCFSUID(ba + 9) forKey: @"NSAccessibilityOidsValues"];
-  [od setObject: makeCFSUID(ba + 10) forKey: @"NSClassesKeys"];
-  [od setObject: makeCFSUID(ba + 11) forKey: @"NSClassesValues"];
-  [od setObject: makeCFSUID(ba + 12) forKey: @"NSVisibleWindows"];
+  [od setObject: makeCFSUID(arrIndices[0]) forKey: @"NSOidsKeys"];
+  [od setObject: makeCFSUID(arrIndices[1]) forKey: @"NSOidsValues"];
+  [od setObject: makeCFSUID(arrIndices[2]) forKey: @"NSObjectsKeys"];
+  [od setObject: makeCFSUID(arrIndices[3]) forKey: @"NSObjectsValues"];
+  [od setObject: makeCFSUID(arrIndices[4]) forKey: @"NSNamesKeys"];
+  [od setObject: makeCFSUID(arrIndices[5]) forKey: @"NSNamesValues"];
+  [od setObject: makeCFSUID(arrIndices[6]) forKey: @"NSConnections"];
+  [od setObject: makeCFSUID(arrIndices[7]) forKey: @"NSAccessibilityConnectors"];
+  [od setObject: makeCFSUID(arrIndices[8]) forKey: @"NSAccessibilityOidsKeys"];
+  [od setObject: makeCFSUID(arrIndices[9]) forKey: @"NSAccessibilityOidsValues"];
+  [od setObject: makeCFSUID(arrIndices[10]) forKey: @"NSClassesKeys"];
+  [od setObject: makeCFSUID(arrIndices[11]) forKey: @"NSClassesValues"];
+  [od setObject: makeCFSUID(arrIndices[12]) forKey: @"NSVisibleWindows"];
   [od setObject: makeCFSUID(frameworksIdx) forKey: @"NSFramework"];
   [od setObject: makeCFSUID(0) forKey: @"NSFontManager"];
   [od setObject: [NSNumber numberWithInt: maxOid + 1] forKey: @"NSNextOid"];
-  [od setObject: makeCFSUID(arrayStart + 12) forKey: @"NSVisibleWindows"];
 
-  {
-      NSNumber *rootIndex = [_oidToIndex objectForKey: [NSNumber numberWithInt: rootOid]];
-      if (rootIndex)
-        [od setObject: makeCFSUID([rootIndex unsignedIntegerValue]) forKey: @"NSRoot"];
-      else
-        [od setObject: makeCFSUID(0) forKey: @"NSRoot"];
-  }
+  NSNumber *rootIndex = [_oidToIndex objectForKey: [NSNumber numberWithInt: rootOid]];
+  if (rootIndex)
+    [od setObject: makeCFSUID([rootIndex unsignedIntegerValue]) forKey: @"NSRoot"];
+  else
+    [od setObject: makeCFSUID(0) forKey: @"NSRoot"];
 
   [_objectsArray replaceObjectAtIndex: 1 withObject: od];
   return YES;
@@ -427,8 +423,8 @@ static int extractOid(NSString *str)
     {
       if (![fm createDirectoryAtPath: nibPath
          withIntermediateDirectories: YES
-                          attributes: nil
-                               error: NULL])
+                           attributes: nil
+                                error: NULL])
         return NO;
     }
 

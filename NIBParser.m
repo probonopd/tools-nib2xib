@@ -273,6 +273,11 @@ void PrintMapTable(NSMapTable *mt)
 	}
 }
 
+- (id) objectData
+{
+	return _object;
+}
+
 - (id) parse
 {
 	NSArray *os = [NSArray arrayWithObjects: @"com.apple.InterfaceBuilder3.Cocoa.XIB",

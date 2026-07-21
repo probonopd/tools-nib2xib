@@ -26,6 +26,7 @@
 #import <sys/resource.h>
 
 #import "NIBParser.h"
+#import "UIPlistWriter.h"
 
 int main(int argc, const char *argv[]) 
 {
@@ -54,11 +55,28 @@ int main(int argc, const char *argv[])
       [pool release];
       return 1;
     }
-    NSString *outputXML = nil;
+    NSString *outputStr = nil;
     BOOL f = NO;
 
-    outputXML = [output description];
-    f = [outputXML writeToFile: outputFileName 
+    if ([[outputFileName pathExtension] isEqualToString: @"uiplist"])
+    {
+      id objectData = [parser objectData];
+      if (objectData == nil)
+      {
+        NSLog(@"No object data available for UIPlist output");
+        [pool release];
+        return 1;
+      }
+      UIPlistWriter *writer = [[UIPlistWriter alloc] initWithObjectData: objectData];
+      outputStr = [writer string];
+      [writer release];
+    }
+    else
+    {
+      outputStr = [output description];
+    }
+
+    f = [outputStr writeToFile: outputFileName 
                     atomically: YES];
     if (f == NO)
     {
@@ -67,8 +85,9 @@ int main(int argc, const char *argv[])
   }
   else
   {
-    puts("NOTE: You must provide both an input.nib and an out.xib file name.");
+    puts("NOTE: You must provide both an input.nib and an output file name.");
     puts("Usage: nib2xib input.nib output.xib");
+    puts("       nib2xib input.nib output.uiplist");
   }
 
   [pool release];

@@ -37,6 +37,7 @@ usage(void)
   puts("  File extensions determine the conversion direction:");
   puts("  .nib   \342\206\222 .xib       Interface Builder XML (loadable by GNUstep)");
   puts("  .nib   \342\206\222 .uiplist   git-friendly object graph dump");
+  puts("  .gorm  \342\206\222 .xib       GNUstep Gorm file to XIB");
   puts("  .uiplist \342\206\222 .nib     restore .nib bundle from .uiplist");
 }
 
@@ -83,8 +84,8 @@ int main(int argc, const char *argv[])
       return 0;
     }
 
-  // .nib → anything (xib or uiplist)
-  if ([inputExt isEqualToString: @"nib"])
+  // .nib or .gorm → anything (xib or uiplist)
+  if ([inputExt isEqualToString: @"nib"] || [inputExt isEqualToString: @"gorm"])
     {
       NIBParser *parser = [[NIBParser alloc] initWithNibNamed: inputPath];
       if (parser == nil)
@@ -100,6 +101,13 @@ int main(int argc, const char *argv[])
           [pool release];
           return 1;
         }
+      if ([inputExt isEqualToString: @"gorm"] && [outputExt isEqualToString: @"uiplist"])
+	{
+	  NSLog(@"UIPlist output from .gorm input is not supported");
+	  [pool release];
+	  return 1;
+	}
+
       NSString *outputStr = nil;
 
       if ([outputExt isEqualToString: @"uiplist"])

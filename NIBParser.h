@@ -41,6 +41,8 @@
 	XMLDocument *_document;
 	NSMapTable *_objectsProcessed;
 	int _nextFallbackOid;
+
+	BOOL _isGormContainer;
 }
 
 - (id) initWithNibNamed: (NSString *)nibNamed;

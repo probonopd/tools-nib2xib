@@ -23,6 +23,11 @@
 
 #import <Foundation/NSArchiver.h>
 #import <Foundation/NSDictionary.h>
+#import <Foundation/NSFileManager.h>
+#import <Foundation/NSScanner.h>
+#import <Foundation/NSPropertyList.h>
+#import <objc/runtime.h>
+#import <objc/message.h>
 
 #import <GNUstepGUI/GSNibLoading.h>
 
@@ -48,6 +53,17 @@ void PrintMapTable(NSMapTable *mt)
 	}
 }
 
+static IMP s_originalNSWTInitWithCoder = NULL;
+
+static id s_swizzledNSWTInitWithCoder(id self, SEL _cmd, NSCoder *coder)
+{
+    if ([coder allowsKeyedCoding])
+    {
+        return ((id (*)(id, SEL, NSCoder *))s_originalNSWTInitWithCoder)(self, _cmd, coder);
+    }
+    return [self init];
+}
+
 @implementation NIBParser
 
 - (id) initWithNibNamed: (NSString *)nibNamed
@@ -56,6 +72,7 @@ void PrintMapTable(NSMapTable *mt)
 	if (self != nil)
 	{
 		NSString *keyedPath = [nibNamed stringByAppendingPathComponent: @"keyedobjects.nib"];
+		NSString *gormPath = [nibNamed stringByAppendingPathComponent: @"objects.gorm"];
 		NSData *data = [NSData dataWithContentsOfFile: keyedPath];
 
 		_nameTable = NULL;
@@ -64,20 +81,129 @@ void PrintMapTable(NSMapTable *mt)
 
 		if (data != nil)
 		{
+			// Modern .nib format (NSKeyedArchiver)
 			NSKeyedUnarchiver *unarchiver;
 			unarchiver = [[NSKeyedUnarchiver alloc] initForReadingWithData: data];
 			_object = [[unarchiver decodeObjectForKey: @"IB.objectdata"] retain];
 			[unarchiver release];
 		}
+		else
+		{
+			// Legacy .gorm format (NSUnarchiver) with dynamic class resolution
+			data = [NSData dataWithContentsOfFile: gormPath];
+			if (data != nil)
+			{
+				// Pre-register classes from data.classes if present
+				NSString *classesPath = [nibNamed stringByAppendingPathComponent: @"data.classes"];
+				if ([[NSFileManager defaultManager] fileExistsAtPath: classesPath])
+				{
+					NSData *classesData = [NSData dataWithContentsOfFile: classesPath];
+					NSString *errorDesc = nil;
+					NSDictionary *classesDict = [NSPropertyListSerialization
+						propertyListFromData: classesData
+						mutabilityOption: NSPropertyListImmutable
+						format: NULL
+						errorDescription: &errorDesc];
 
-		if (_object == nil || [_object respondsToSelector: @selector(root)] == NO)
+					if (classesDict != nil)
+					{
+						for (NSString *className in classesDict)
+						{
+							if (NSClassFromString(className) == nil)
+							{
+								NSDictionary *classInfo = [classesDict objectForKey: className];
+								NSString *superName = [classInfo objectForKey: @"Super"];
+								if (superName == nil)
+									superName = @"NSObject";
+
+								Class superClass = NSClassFromString(superName);
+								if (superClass == nil)
+									superClass = [NSObject class];
+
+								Class newClass = objc_allocateClassPair(superClass, [className UTF8String], 0);
+								if (newClass != nil)
+								{
+									objc_registerClassPair(newClass);
+								}
+							}
+						}
+					}
+				}
+
+				// Swizzle NSWindowTemplate for NSUnarchiver compatibility
+				Class nswtClass = NSClassFromString(@"NSWindowTemplate");
+				if (nswtClass != nil)
+				{
+				    Method m = class_getInstanceMethod(nswtClass, @selector(initWithCoder:));
+				    if (m != NULL && s_originalNSWTInitWithCoder == NULL)
+				    {
+				        s_originalNSWTInitWithCoder = method_getImplementation(m);
+				        method_setImplementation(m, (IMP)s_swizzledNSWTInitWithCoder);
+				    }
+				}
+
+				// Retry loop for dynamic class resolution
+				BOOL unarchived = NO;
+				int maxRetries = 100;
+
+				for (int retry = 0; retry < maxRetries && !unarchived; retry++)
+				{
+					BOOL shouldRetry = NO;
+
+					NS_DURING
+						_object = [[NSUnarchiver unarchiveObjectWithFile: gormPath] retain];
+						if (_object != nil)
+							unarchived = YES;
+					NS_HANDLER
+						NSString *reason = [localException reason];
+						if (reason != nil && [reason hasPrefix: @"Unable to find class '"])
+						{
+							NSString *className = nil;
+							NSScanner *scanner = [NSScanner scannerWithString: reason];
+							[scanner scanUpToString: @"'" intoString: NULL];
+							[scanner scanString: @"'" intoString: NULL];
+							[scanner scanUpToString: @"'" intoString: &className];
+
+							if (className != nil)
+							{
+								Class newClass = objc_allocateClassPair([NSObject class], [className UTF8String], 0);
+								if (newClass != nil)
+								{
+									objc_registerClassPair(newClass);
+									shouldRetry = YES;
+								}
+							}
+						}
+						else
+						{
+							NSLog(@"Failed to unarchive gorm: %@", reason);
+						}
+					NS_ENDHANDLER
+
+					if (!unarchived && !shouldRetry)
+						break;
+				}
+			}
+		}
+
+		if (_object == nil)
 		{
 			NSLog(@"Failed to decode nib: %@", nibNamed);
 			[self release];
 			return nil;
 		}
 
-		_rootObject = [_object root];
+		_isGormContainer = ([_object respondsToSelector: @selector(nameTable)]) ? YES : NO;
+
+		if ([_object respondsToSelector: @selector(root)])
+		{
+			_rootObject = [_object root];
+		}
+		else
+		{
+			_rootObject = nil;
+		}
+
 		_nameTable = ([_object respondsToSelector: @selector(names)]) ? (NSMapTable *)[_object names] : nil;
 		_oidTable = ([_object respondsToSelector: @selector(oids)]) ? (NSMapTable *)[_object oids] : nil;
 		_objectTable = ([_object respondsToSelector: @selector(objects)]) ? (NSMapTable *)[_object objects] : nil;
@@ -287,7 +413,29 @@ void PrintMapTable(NSMapTable *mt)
 		@"targetRuntime", @"propertyAccessControl", @"useAutolayout", @"customObjectInstantiationMethod", nil];
 	NSMutableDictionary *docAttrs = [NSMutableDictionary dictionaryWithObjects: os forKeys: ks];
 	XMLDocument *document = [[XMLDocument alloc] initWithName: @"document"];
-	NSMapTable *nameTable = (_object != nil && [_object respondsToSelector: @selector(names)]) ? (NSMapTable *)[_object names] : nil;
+	NSMapTable *nameTable = nil;
+	if ([_object respondsToSelector: @selector(names)])
+	{
+		nameTable = (NSMapTable *)[_object names];
+	}
+	else if ([_object respondsToSelector: @selector(nameTable)])
+	{
+		// GSNibContainer: nameTable maps name→object, reverse to object→name
+		NSDictionary *dict = [_object nameTable];
+		nameTable = NSCreateMapTable(NSObjectMapKeyCallBacks, NSObjectMapValueCallBacks, [dict count]);
+		for (id key in dict)
+		  {
+			id val = [dict objectForKey: key];
+			// Skip metadata entries (values are strings/arrays, not objects)
+			if (val != nil && ![val isKindOfClass: [NSString class]]
+			  && ![val isKindOfClass: [NSArray class]]
+			  && ![val isKindOfClass: [NSDictionary class]]
+			  && ![val isKindOfClass: [NSSet class]])
+			  {
+				NSMapInsert(nameTable, (__bridge void *)val, (__bridge void *)key);
+			  }
+		  }
+	}
 	NSArray *keys = (nameTable != nil) ? NSAllMapTableKeys(nameTable) : nil;
 	NSEnumerator *en = [keys objectEnumerator];
 	XMLNode *dependencies = [[XMLNode alloc] initWithName: @"dependencies"];

@@ -21,23 +21,13 @@
  * USA.
  */
 
-#import <Foundation/NSObject.h>
+#import <GNUstepGUI/GSNibLoading.h>
+
 #import "XMLParsing.h"
 
-@class NSString;
+@interface NSCustomObject (Methods)
 
-@interface NSCustomObject : NSObject 
-{
-    NSString *className;
-    id realObject;
-    id extension;
-}
-@end
-
-@interface NSCustomObject (Methods) <XMLParsing>
-
-- (NSString *) className;
-- (id) realObject;
-- (id) extension;
+- (NSMutableDictionary *) attributesFromProperties;
+- (XMLNode *) toXMLWithParser: (id<OidProvider>)parser;
 
 @end

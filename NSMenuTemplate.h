@@ -21,49 +21,13 @@
  * USA.
  */
 
-#import <Foundation/NSObject.h>
-#import <Foundation/NSGeometry.h>
-#import "OidProvider.h"
+#import <GNUstepGUI/GSNibLoading.h>
 
-@class NSString;
-@class XMLNode;
-
-@interface NSMenuTemplate : NSObject
-{
-	NSString *title;
-	NSString *menuClassName;
-	id        view;
-	id        supermenu;
-	id        realObject;
-	id        extension;     
-	NSPoint   location;
-	BOOL      isWindowsMenu;
-	BOOL      isRequestMenu;
-	BOOL      isFontMenu;
-	int       interfaceStyle;
-	BOOL      pullsDown;
-}
-@end
+#import "XMLParsing.h"
 
 @interface NSMenuTemplate (Methods)
 
-- (NSString *) title;
-- (NSString *) menuClassName;
-- (id) view;
-- (id) supermenu;
-- (id) realObject;
-- (id) extension;
-- (NSPoint) location;
-- (BOOL) isWindowsMenu;
-- (BOOL) isRequestMenu;
-- (BOOL) isFontMenu;
-- (int) interfaceStyle;
-- (BOOL) pullsDown;
-- (void) setPullsDown: (BOOL)flag;
-- (id) selectedItem;
-- (void) setSelectedItem: (id)item;
-
-// Parsing...
+- (NSString *) classNameForParser;
 - (XMLNode *) toXMLWithParser: (id<OidProvider>)parser;
 
 @end

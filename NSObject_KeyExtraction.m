@@ -20,8 +20,7 @@
    Boston, MA 02110 USA.
 */
 
-#import <objc/objc.h>
-#import <objc/objc-class.h>
+#import <objc/runtime.h>
 
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
@@ -31,7 +30,7 @@
 #import "XMLNode.h"
 #import "OidProvider.h"
 
-#define DEBUG
+// #define DEBUG
 
 @class NSInlineCString;
 
@@ -40,50 +39,27 @@
 + (void) getAllMethodsForClass: (Class)cls
 		     intoArray: (NSMutableArray *)methodsArray
 {
-	void *iterator = 0;
-  struct objc_method_list *mlist;
-  struct objc_class *superclass;
-
-#ifdef DEBUG
-  NSLog(@"class = %@", cls);
-#endif
   if (cls == nil || cls == [NSObject class])
   {
     return;
   }
-  
-#ifdef DEBUG
-  NSLog(@"Processing method list...");
-#endif
-  while ( mlist = class_nextMethodList( cls, &iterator ) )
+
+  unsigned int count = 0;
+  Method *methods = class_copyMethodList(cls, &count);
+
+  if (methods != NULL)
   {
-  	unsigned int count = 0; 
-  	unsigned int i = 0;
-
-  	count = mlist->method_count;
-#ifdef DEBUG    
-    // NSLog(@"count = %d", count);
-#endif
-
-  	for (i = 0; i < count; i++)
-  	{
-    	struct objc_method method = mlist->method_list[i];
-    	SEL method_name = method.method_name;
+    for (unsigned int i = 0; i < count; i++)
+    {
+      SEL method_name = method_getName(methods[i]);
       NSString *methodName = NSStringFromSelector(method_name);
-
-    	[methodsArray addObject: methodName];
-#ifdef DEBUG
-      NSLog(@"i = %d, methodName = %@", i, methodName);
-#endif
-  	}
+      [methodsArray addObject: methodName];
+    }
+    free(methods);
   }
-#ifdef DEBUG
-  NSLog(@"Done processing");
-#endif
 
   // Recursively call this method for the superclass
-  superclass = cls->super_class;
-  [self getAllMethodsForClass:superclass intoArray:methodsArray];
+  [self getAllMethodsForClass: class_getSuperclass(cls) intoArray: methodsArray];
 }
 
 + (NSArray *) recursiveGetAllMethodsForClass: (Class)cls
@@ -101,6 +77,11 @@
     @"NSNamedColorSpace",
     @"NSAttributedString",
     @"NSConcreteAttributedString",
+    @"NSFont",
+    @"NSImage",
+    @"NSColor",
+    @"NSCachedWhiteColor",
+    @"NSCachedBlackColor",
     nil];  
   return _skippedClasses;
 }
@@ -156,6 +137,8 @@
     @"titleOfSelectedItemWithMnemonic",
     @"pullsDown",
     @"contentSize",
+    @"sound",
+    @"alternateImage",
     nil];
   return _skippedKeys;
 }
@@ -213,12 +196,6 @@
     @"imageScaling",
     @"imageAlignment",
     @"imageFrame",
-    @"alternateImage",
-    @"alternateImageScaling",
-    @"alternateImagePosition",
-    @"alternateImageFrame",
-    @"alternateImageAlignment",
-    @"alternateImageDimsWhenDisabled",
     @"matchesOnMultipleResolution",
     @"prefersColorMatch",
     @"size",
@@ -293,6 +270,18 @@
     @"contentFrame",
     @"contentBounds",
     @"contentRect",
+    @"cornerRadius",
+    @"borderWidth",
+    @"borderType",
+    @"boxType",
+    @"transparent",
+    @"titlePosition",
+    @"controlSize",
+    @"controlTint",
+    @"tabViewType",
+    @"bezelStyle",
+    @"buttonType",
+    @"segmentedControlStyle",
     @"usesFontPanel",
     @"usesFindPanel",
     @"usesRuler",
@@ -301,6 +290,8 @@
     @"usesInspectorBarForTextView",
     @"intefaceStyle",
     @"menuChangedMessagesEnabled",
+    @"alphaValue",
+    @"hidden",
     @"isReleasedWhenClosed",
     @"isFlipped",
     @"isOpaque",
@@ -370,7 +361,9 @@
   NSArray *methods = [NSObject recursiveGetAllMethodsForClass: [self class]];
   NSEnumerator *en = [methods objectEnumerator];
   NSString *selectorName = nil;
-  NSMutableSet *result = [NSMutableArray arrayWithCapacity: [methods count]];
+  NSMutableSet *result = [NSMutableSet setWithCapacity: [methods count]];
+  NSSet *nonObjects = [NSSet setWithArray: [NSObject nonObjects]];
+  NSSet *keyObjects = [NSSet setWithArray: [NSObject keyObjects]];
   
   while ((selectorName = [en nextObject]) != nil)
   {
@@ -380,7 +373,7 @@
       SEL s = NULL;
       NSString *lowerKeyName = nil;
 
-      if ([keyName length] == 0 || [keyName characterAtIndex: 0] == '_') // || [keyName isKindOfClass: [NSInlineCString class]] == YES)
+      if ([keyName length] == 0 || [keyName characterAtIndex: 0] == '_')
       {
         continue;
       }
@@ -391,18 +384,41 @@
       
       // if the object responds, add it... this way we know it's a key.
       s = NSSelectorFromString(lowerKeyName);
-      if (s != NULL)
+      if (s != NULL && [self respondsToSelector: s])
       {
-	  	  [result addObject: lowerKeyName];
+        // Skip keys that return non-object types not in nonObjects
+        NSMethodSignature *sig = [self methodSignatureForSelector: s];
+        if (sig != nil)
+        {
+          const char *returnType = [sig methodReturnType];
+          if (returnType != NULL && returnType[0] == '@')
+          {
+            [result addObject: lowerKeyName];
+          }
+          else if ([nonObjects containsObject: lowerKeyName]
+                || [keyObjects containsObject: lowerKeyName])
+          {
+            [result addObject: lowerKeyName];
+          }
+        }
       }
       else
       {
         NSString *isKeyName = [NSString stringWithFormat: @"is%@", keyName];
         s = NSSelectorFromString(isKeyName);
 
-        if(s != NULL)
+        if(s != NULL && [self respondsToSelector: s])
         {
-          [result addObject: isKeyName];
+          // Include is* keys only if they return BOOL
+          NSMethodSignature *sig = [self methodSignatureForSelector: s];
+          if (sig != nil)
+          {
+            const char *returnType = [sig methodReturnType];
+            if (returnType != NULL && returnType[0] == 'c')
+            {
+              [result addObject: isKeyName];
+            }
+          }
         }
       }
 		}
@@ -419,24 +435,27 @@
 
 - (XMLNode *) processObjectWithParser: (id<OidProvider>)parser
 {
-  NSSet *allKeys = [self keysForObject];
-  NSEnumerator *e = [allKeys objectEnumerator];
-  id k = nil;
   NSString *className = [self classNameForParser];    
-  NSString *name = [className classNameToTagName];
-  XMLNode *result = [[XMLNode alloc] initWithName: name];
-  NSString *oid = [parser oidForObject: self];
+
+  if ([[NSObject skippedClasses] containsObject: className])
+  {
+    return nil;
+  }
 
   if ([parser isObjectProcessed: self])
   {
     return [parser processedObject: self];
   }
 
+  NSString *name = [className classNameToTagName];
+  XMLNode *result = [[XMLNode alloc] initWithName: name];
+  NSString *oid = [parser oidForObject: self];
+
   [parser addProcessedObject: self withNode: result];
-  if ([[NSObject skippedClasses] containsObject: className])
-  {
-    return nil;
-  }
+
+  NSSet *allKeys = [self keysForObject];
+  NSEnumerator *e = [allKeys objectEnumerator];
+  id k = nil;
 
 #ifdef DEBUG
   if ([self isKindOfClass: [NSView class]])
@@ -467,98 +486,96 @@
 
       if ([[NSObject nonObjects] containsObject: k]) // frames, sizes, flags...
       {
-#ifdef DEBUG
-        NSLog(@"Current NON-Object = %@", k);
-#endif        
-        if ([[NSObject keyObjects] containsObject: k])
-        {
-          XMLNode *node = nil;
+        const char *returnType = [signature methodReturnType];
+        XMLNode *node = nil;
 
-          // rect/frame, etc... non objects
-          if ([k hasSuffix: @"Rect"] || [k isEqualToString: @"frame"] || [k isEqualToString: @"bounds"])
+        // rect/frame, etc... non objects
+        if ([k hasSuffix: @"Rect"] || [k isEqualToString: @"frame"] || [k isEqualToString: @"bounds"])
+        {
+          if (returnType != NULL && returnType[0] == '{')
           {
             NSRect (*func)(id, SEL) = (NSRect (*)(id, SEL))imp;
             NSRect rect = (func)(self, s);
             node = [XMLNode nodeForRect: rect type: k];
           }
-          else if ([k hasSuffix: @"Size"])
+        }
+        else if ([k hasSuffix: @"Size"])
+        {
+          if (returnType != NULL && returnType[0] == '{')
           {
             NSSize (*func)(id, SEL) = (NSSize (*)(id, SEL))imp;
             NSSize size = (func)(self, s);
             node = [XMLNode nodeForSize: size type: k];
           }
-          else if ([k hasSuffix: @"Mask"])
+        }
+        else if ([k hasSuffix: @"Mask"])
+        {
+          if ([k isEqualToString: @"autoresizingMask"])
           {
-            if ([k isEqualToString: @"autoresizingMask"])
+            unsigned int mask = [(NSView *)self autoresizingMask];
+            node = [[XMLNode alloc] initWithName: k];
+            [node addAttribute: @"key" value: k];
+            if (mask | NSViewMaxXMargin)
             {
-              unsigned int mask = [(NSView *)self autoresizingMask];
-
-              node = [[XMLNode alloc] initWithName: k];
-              [node addAttribute: @"key" value: k];
-              if (mask | NSViewMaxXMargin)
-              {
-                [node addAttribute: @"flexibleMaxX" value: @"YES"];
-              }
-              else if (mask | NSViewMaxYMargin)
-              {
-                [node addAttribute: @"flexibleMaxY" value: @"YES"];        
-              }
-              else if (mask | NSViewMinXMargin)
-              {
-                [node addAttribute: @"flexibleMinY" value: @"YES"];           
-              }
-              else if (mask | NSViewMinYMargin)
-              {
-                [node addAttribute: @"flexibleMinY" value: @"YES"]; 
-              }
+              [node addAttribute: @"flexibleMaxX" value: @"YES"];
             }
-          }
-
-          // If the node was set above, add it...
-          if (node != nil)
-          {
-            [result addElement: node];
+            else if (mask | NSViewMaxYMargin)
+            {
+              [node addAttribute: @"flexibleMaxY" value: @"YES"];        
+            }
+            else if (mask | NSViewMinXMargin)
+            {
+              [node addAttribute: @"flexibleMinY" value: @"YES"];           
+            }
+            else if (mask | NSViewMinYMargin)
+            {
+              [node addAttribute: @"flexibleMinY" value: @"YES"]; 
+            }
           }
         }
-        else
+        else if ([k hasPrefix: @"is"])
         {
-          BOOL (*func)(id, SEL) = (BOOL (*)(id, SEL))imp;
-          BOOL f = (func)(self, s);
+          if (returnType != NULL && returnType[0] == 'c')
+          {
+            BOOL (*func)(id, SEL) = (BOOL (*)(id, SEL))imp;
+            BOOL f = (func)(self, s);
 
-          if ([k isEqualToString: @"isBezeled"])
-          {
-            if (f == YES)
+            if ([k isEqualToString: @"isBezeled"])
             {
-              if ([self isKindOfClass: [NSTextFieldCell class]])
+              if (f == YES)
               {
-                [result addAttribute: @"borderStyle" value: @"bezel"];
+                if ([self isKindOfClass: [NSTextFieldCell class]])
+                {
+                  [result addAttribute: @"borderStyle" value: @"bezel"];
+                }
+                else
+                {
+                  [result addAttribute: @"type" value: @"bevel"];
+                }
               }
-              else
+            }
+            else if ([k isEqualToString: @"isBordered"])
+            {
+              if (f == YES)
               {
-                [result addAttribute: @"type" value: @"bevel"];
+                [result addAttribute: @"borderStyle" value: @"border"];
+              }
+            }
+            else
+            {
+              NSString *name = [k stringByReplacingOccurrencesOfString: @"is" withString: @""];
+              name = [name lowercaseFirstCharacter];
+              if (f == YES)
+              {
+                [result addAttribute: name value: @"YES"];
               }
             }
           }
-          else if ([k isEqualToString: @"isBordered"])
-          {
-            if (f == YES)
-            {
-              [result addAttribute: @"borderStyle" value: @"border"];
-#ifdef DEBUG              
-              NSLog(@"Bordered = %@", result);
-#endif
-            }
-          }
-          else if ([k hasPrefix: @"is"])
-          {
-            NSString *name = [k stringByReplacingOccurrencesOfString: @"is" withString: @""];
+        }
 
-            name = [name lowercaseFirstCharacter];
-            if (f == YES)
-            {
-              [result addAttribute: name value: @"YES"];
-            }
-          }
+        if (node != nil)
+        {
+          [result addElement: node];
         }
       }
       else // Objects...

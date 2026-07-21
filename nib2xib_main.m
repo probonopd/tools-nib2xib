@@ -21,17 +21,19 @@
  * USA.
  */
 
-#import <objc/objc.h>
 #import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
+#import <sys/resource.h>
 
 #import "NIBParser.h"
 
-#define DEBUG 1
-
 int main(int argc, const char *argv[]) 
 {
+  struct rlimit rl = { RLIM_INFINITY, RLIM_INFINITY };
+  setrlimit(RLIMIT_STACK, &rl);
+
   NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+  [NSApplication sharedApplication];
 
   // If we have more than one argument, assume it is the nib file...
   if (argc == 3)
@@ -39,16 +41,22 @@ int main(int argc, const char *argv[])
     NSString *nibName = [NSString stringWithCString: argv[1]];
     NSString *outputFileName = [NSString stringWithCString: argv[2]];
     NIBParser *parser = [[NIBParser alloc] initWithNibNamed: nibName];
+    if (parser == nil)
+    {
+      NSLog(@"Parser initialization failed");
+      [pool release];
+      return 1;
+    }
     id output = [parser parse];
+    if (output == nil)
+    {
+      NSLog(@"Parse returned nil");
+      [pool release];
+      return 1;
+    }
     NSString *outputXML = nil;
     BOOL f = NO;
 
-#ifdef DEBUG
-    NSLog(@"--- Output");
-    NSLog(@"parser = %@", parser);
-    NSLog(@"output = \n%@", output);
-#endif
-    
     outputXML = [output description];
     f = [outputXML writeToFile: outputFileName 
                     atomically: YES];

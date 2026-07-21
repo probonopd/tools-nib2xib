@@ -21,7 +21,6 @@
  * USA.
  */
 
-#include <Foundation/Foundation.h>
 #import <Foundation/NSString.h>
 #import "NSCustomObject.h"
 
@@ -30,35 +29,18 @@
 
 @implementation NSCustomObject (Methods)
 
-- (NSString *) className
-{
-    return className;
-}
-
-- (id) realObject
-{
-    return realObject;
-}
-
-- (id) extension
-{
-    return extension;
-}
-
-- (NSString *) description
-{
-    return [NSString stringWithFormat: @"%@ - <className = %@, realObject = %@, extension = %@>", 
-        [super description], className, realObject, extension];
-}
-
 - (NSMutableDictionary *) attributesFromProperties
 {
     NSMutableDictionary *dict = [NSMutableDictionary dictionary];
-    [dict setObject: className forKey: @"customClass"];
+    NSString *cn = ([self respondsToSelector: @selector(className)]) ? [self className] : nil;
+    if (cn != nil)
+    {
+        [dict setObject: cn forKey: @"customClass"];
+    }
     return dict;
 }
 
-- (XMLNode *) toXMLWithParser: (id<OidProvider>) parser 
+- (XMLNode *) toXMLWithParser: (id<OidProvider>) parser
 {
     NSString *cn = NSStringFromClass([self class]);
     NSString *tagName = [cn classNameToTagName];
@@ -66,7 +48,6 @@
     XMLNode *node = [[XMLNode alloc] initWithName: tagName value: @"" attributes: attrs elements: [NSMutableArray array]];
     NSString *oid = [parser oidForObject: self];
     [node addAttribute: @"id" value: oid];
-
     return node;
 }
 @end

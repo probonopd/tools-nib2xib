@@ -21,11 +21,9 @@
  * USA.
  */
 
-#import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
 
 #import "NSWindowTemplate.h"
-
 #import "XMLNode.h"
 #import "NSString_Additions.h"
 #import "NSObject_KeyExtraction.h"
@@ -34,120 +32,68 @@
 
 - (int) interfaceStyle
 {
-    return wtFlags.style;
+    return 0;
 }
 
 - (void) setInterfaceStyle:(int)fp16
 {
-    wtFlags.style = fp16;
-}
-
-- (NSRect) windowRect
-{
-    return windowRect;
-}
-
-- (int) windowStyleMask
-{
-    return windowStyleMask;
-}
-
-- (int) windowBacking
-{
-    return windowBacking;
-}
-
-- (NSString *) windowTitle
-{
-    return windowTitle;
-}
-
-- (NSString *) viewClass
-{
-    return viewClass;
-}
-
-- (NSString *) windowClass
-{
-    return windowClass;
-}
-
-- (id) windowView
-{
-    return windowView;
-}
-
-- (id) realObject
-{
-    return realObject;
-}
-
-- (NSSize) minSize
-{
-    return minSize;
-}
-
-- (GSWindowTemplateFlags) wtFlags
-{
-    return wtFlags;
-}
-
-- (NSRect) screenRect
-{
-    return screenRect;
 }
 
 - (NSMutableDictionary *) attributesFromProperties
 {
     NSMutableDictionary *result = [NSMutableDictionary dictionary];
 
-    // Title and other string properties...
-    [result setObject: windowTitle forKey: @"title"];
-    [result setObject: windowClass forKey: @"customClass"];
-
-    // Flags...
+    if ([self respondsToSelector: @selector(title)])
+    {
+        [result setObject: [self title] forKey: @"title"];
+    }
+    if ([self respondsToSelector: @selector(windowClass)])
+    {
+        if ([self respondsToSelector: @selector(className)])
+        {
+            [result setObject: [self className] forKey: @"customClass"];
+        }
+    }
 
     return result;
 }
-
-/*
-- (NSSet *) keysForObject
-{
-    return [NSSet setWithObjects: @"interfaceStyle", 
-        @"windowRect", @"windowStyleMask",
-        @"windowTitle", @"minSize", @"screenRect", nil];
-}
-*/
 
 - (NSString *) classNameForParser
 {
     return @"NSWindow";
 }
 
-- (XMLNode *) toXMLWithParser: (id<OidProvider>)parser 
+- (XMLNode *) toXMLWithParser: (id<OidProvider>)parser
 {
-    NSMutableDictionary *attributes = [self attributesFromProperties];
-    XMLNode *windowViewXml = [windowView processObjectWithParser: parser]; 
-    NSMutableArray *elements = [NSMutableArray arrayWithObject: windowViewXml];
-    XMLNode *node = [[XMLNode alloc] initWithName: @"window" value: @"" attributes: attributes elements: elements];
-    XMLNode *frame = [XMLNode nodeForRect: windowRect type: @"contentRect"];
     NSString *oid = [parser oidForObject: self];
+    NSRect wr = ([self respondsToSelector: @selector(windowRect)]) ? [self windowRect] : NSZeroRect;
 
-    if (windowTitle != nil)
+    XMLNode *node = [[XMLNode alloc] initWithName: @"window"];
+    XMLNode *frame = [XMLNode nodeForRect: wr type: @"contentRect"];
+    id windowView = ([self respondsToSelector: @selector(view)]) ? [self view] : nil;
+    XMLNode *viewNode = [[XMLNode alloc] initWithName: @"view"];
+    NSString *title = ([self respondsToSelector: @selector(title)]) ? [self title] : nil;
+
+    [node addAttribute: @"id" value: oid];
+    if (title != nil)
     {
-        XMLNode *styleMask = [[XMLNode alloc] initWithName: @"windowStyleMask"];        
-    
-        [styleMask addAttribute: @"key" value: @"styleMask"];
-        [styleMask addAttribute: @"titled" value: @"YES"];
-        [node addElement: styleMask];
+        [node addAttribute: @"title" value: title];
+    }
+    if ([self respondsToSelector: @selector(className)])
+    {
+        NSString *wc = [self className];
+        if (wc != nil && [wc isEqualToString: @"NSWindow"] == NO)
+        {
+            [node addAttribute: @"customClass" value: wc];
+        }
     }
 
-    [windowViewXml addAttribute: @"key" value: @"contentView"];
-    [node addAttribute: @"customClass" value: windowClass];
-    [node addAttribute: @"id" value: oid];
+    [viewNode addAttribute: @"id" value: [parser oidForObject: windowView]];
+    [viewNode addAttribute: @"key" value: @"contentView"];
+
     [node addElement: frame];
-    // [node addElement: windowViewXml];
-    
+    [node addElement: viewNode];
+
     return node;
 }
 

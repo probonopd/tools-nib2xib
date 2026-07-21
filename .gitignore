@@ -1,7 +1,3 @@
+obj/
+.vscode/
 *~
-*.app
-*.iconheader
-obj-*-opt
-nib2xib
-*.xib._*
-._*

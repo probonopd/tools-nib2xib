@@ -21,35 +21,19 @@
  * USA.
  */
 
-#import <Foundation/Foundation.h>
 #import <Foundation/NSArchiver.h>
 #import <Foundation/NSDictionary.h>
 
-#import "NSIBObjectData.h"
+#import <GNUstepGUI/GSNibLoading.h>
+
+#import "NSIBConnector.h"
 #import "NSCustomObject.h"
 #import "NSWindowTemplate.h"
 #import "NSMenuTemplate.h"
-#import "NSIBConnector.h"
 
 #import "NIBParser.h"
 #import "XMLDocument.h"
 #import "XMLNode.h"
-
-// #define DEBUG
-
-@interface NSMutableDictionary (LoadNibFormat)
-+ (NSMutableDictionary *) dictionaryWithContentsOfClassesFile: (NSString *)file;
-@end
-
-@implementation NSMutableDictionary (LoadNibFormat)
-+ (NSMutableDictionary *) dictionaryWithContentsOfClassesFile: (NSString *)file
-{
-	NSString *fileContents = [NSString stringWithContentsOfFile: file];
-	NSString *string = [NSString stringWithFormat: @"{ %@ }", fileContents];
-	NSDictionary *dict = [string propertyList];
-	return [NSMutableDictionary dictionaryWithDictionary: dict];
-}
-@end
 
 void PrintMapTable(NSMapTable *mt)
 {
@@ -64,19 +48,6 @@ void PrintMapTable(NSMapTable *mt)
 	}
 }
 
-void PrintMapTableOids(NSMapTable *mt)
-{
-	NSArray *keys = NSAllMapTableKeys(mt);
-	NSEnumerator *en = [keys objectEnumerator];
-	void *k = NULL;
-
-	while ((k = [en nextObject]) != nil)
-	{
-		void *v = NSMapGet(mt, k);
-		NSLog(@"k = %@, v = %ld", k, (int)v);
-	}
-}
-
 @implementation NIBParser
 
 - (id) initWithNibNamed: (NSString *)nibNamed
@@ -84,46 +55,37 @@ void PrintMapTableOids(NSMapTable *mt)
 	self = [super init];
 	if (self != nil)
 	{
-		NSString *objectsNib = [nibNamed stringByAppendingPathComponent: @"objects.nib"];
-		NSString *dataClasses = [nibNamed stringByAppendingPathComponent: @"data.classes"];
-		
+		NSString *keyedPath = [nibNamed stringByAppendingPathComponent: @"keyedobjects.nib"];
+		NSData *data = [NSData dataWithContentsOfFile: keyedPath];
+
 		_nameTable = NULL;
 		_oidTable = NULL;
 		_objectTable = NULL;
 
-		_object = [NSUnarchiver unarchiveObjectWithFile: objectsNib];
-		_rootObject = [_object rootObject];
-		
-		_nameTable = [_object nameTable];
-		_oidTable = [_object oidTable];
-		_objectTable = [_object objectTable];
-		_connections = [_object connections];
+		if (data != nil)
+		{
+			NSKeyedUnarchiver *unarchiver;
+			unarchiver = [[NSKeyedUnarchiver alloc] initForReadingWithData: data];
+			_object = [[unarchiver decodeObjectForKey: @"IB.objectdata"] retain];
+			[unarchiver release];
+		}
+
+		if (_object == nil || [_object respondsToSelector: @selector(root)] == NO)
+		{
+			NSLog(@"Failed to decode nib: %@", nibNamed);
+			[self release];
+			return nil;
+		}
+
+		_rootObject = [_object root];
+		_nameTable = ([_object respondsToSelector: @selector(names)]) ? (NSMapTable *)[_object names] : nil;
+		_oidTable = ([_object respondsToSelector: @selector(oids)]) ? (NSMapTable *)[_object oids] : nil;
+		_objectTable = ([_object respondsToSelector: @selector(objects)]) ? (NSMapTable *)[_object objects] : nil;
+		_connections = ([_object respondsToSelector: @selector(connections)]) ? [_object connections] : nil;
 
 		_objectsProcessed = NSCreateMapTable(NSNonRetainedObjectMapKeyCallBacks, NSObjectMapValueCallBacks, 0);
-		
-#ifdef DEBUG
-		NSLog(@"objectsNib = %@", objectsNib);
-		NSLog(@"dataClasses = %@", dataClasses);
-		NSLog(@"connections = %@", _connections);
-#endif		
-
 		_objectsDictionary = [NSMutableDictionary dictionary];
-		_classesDictionary = [NSMutableDictionary dictionaryWithContentsOfClassesFile: dataClasses];
-		
-#ifdef DEBUG
-		NSLog(@"_object = %@", _object);
-		NSLog(@"_rootObject = %@", _rootObject);
-		NSLog(@"_classesDictionary = %@", _classesDictionary);
-#endif
-
-#ifdef DEBUG
-		NSLog(@"== nameTable");
-		PrintMapTable(_nameTable);
-		NSLog(@"== objectTable");
-		PrintMapTable(_objectTable);
-		NSLog(@"== oidTable");
-		PrintMapTableOids(_oidTable);
-#endif
+		_classesDictionary = [NSMutableDictionary dictionary];
 	}
 	return self;
 }
@@ -147,7 +109,7 @@ void PrintMapTableOids(NSMapTable *mt)
 	return NO;
 }
 
-- (NSArray *) objectsProcessed 
+- (NSArray *) objectsProcessed
 {
 	NSArray *keys = NSAllMapTableKeys(_objectsProcessed);
 	NSMutableArray *result = [NSMutableArray array];
@@ -178,16 +140,37 @@ void PrintMapTableOids(NSMapTable *mt)
 
 - (NSString *) oidForObject: (id)obj
 {
-	int k = (int)NSMapGet(_oidTable, obj);
-	int n = (k != 0) ? k : [obj hash]; // if no oid, use the hash
+	int n = 0;
+
+	if (_oidTable != NULL)
+	{
+		void *v = NSMapGet(_oidTable, obj);
+		if (v != NULL)
+		{
+			if ([(id)v isKindOfClass: [NSNumber class]])
+			{
+				n = [(NSNumber *)v intValue];
+			}
+			else
+			{
+				n = (int)(intptr_t)v;
+			}
+		}
+	}
+
+	if (n == 0)
+	{
+		n = (int)[obj hash];
+	}
+
 	NSString *value = nil;
 	NSString *result = [NSString stringWithFormat: @"%08x", n];
 	NSString *first = [result substringWithRange: NSMakeRange(0, 3)];
 	NSString *middle = [result substringWithRange: NSMakeRange(3, 2)];
 	NSString *last = [result substringWithRange: NSMakeRange(5, 3)];
 	value = [NSString stringWithFormat: @"%@-%@-%@", first, middle, last];
-	
-	if ([value isEqualToString: @"000-00-000"]) 
+
+	if ([value isEqualToString: @"000-00-000"])
 	{
 		value = @"-1";
 	}
@@ -213,7 +196,7 @@ void PrintMapTableOids(NSMapTable *mt)
 {
 	NSEnumerator *en = [_connections objectEnumerator];
 	NSMutableArray *result = [NSMutableArray array];
-	NSIBConnector *c = nil;
+	NSNibConnector *c = nil;
 
 	while ((c = [en nextObject]))
 	{
@@ -230,7 +213,7 @@ void PrintMapTableOids(NSMapTable *mt)
 {
 	NSEnumerator *en = [_connections objectEnumerator];
 	NSMutableArray *result = [NSMutableArray array];
-	NSIBConnector *c = nil;
+	NSNibConnector *c = nil;
 
 	while ((c = [en nextObject]))
 	{
@@ -247,18 +230,18 @@ void PrintMapTableOids(NSMapTable *mt)
 {
 	NSEnumerator *en = [_connections objectEnumerator];
 	NSMutableArray *result = [NSMutableArray array];
-	NSIBConnector *c = nil;
+	NSNibConnector *c = nil;
 
 	while ((c = [en nextObject]))
 	{
-		if ([c isKindOfClass: [NSIBControlConnector class]])
+		if ([c isKindOfClass: [NSNibControlConnector class]])
 		{
 			if ([c source] == origin)
 			{
 				[result addObject: c];
 			}
 		}
-		else if ([c isKindOfClass: [NSIBOutletConnector class]])
+		else if ([c isKindOfClass: [NSNibOutletConnector class]])
 		{
 			if ([c source] == origin)
 			{
@@ -267,7 +250,7 @@ void PrintMapTableOids(NSMapTable *mt)
 		}
 	}
 
-	return result;	
+	return result;
 }
 
 - (void) addConnectionsForObject: (id)obj
@@ -284,7 +267,6 @@ void PrintMapTableOids(NSMapTable *mt)
 		[connections addElement: cn];
 	}
 
-	// Don't add empty connections...
 	if ([conns count] > 0)
 	{
 		[node addElement: connections];
@@ -293,17 +275,14 @@ void PrintMapTableOids(NSMapTable *mt)
 
 - (id) parse
 {
-	NSArray *os = [NSArray arrayWithObjects: @"com.apple.InterfaceBuilder3.Cocoa.XIB", 
+	NSArray *os = [NSArray arrayWithObjects: @"com.apple.InterfaceBuilder3.Cocoa.XIB",
 		@"3.0", @"32700.99.1234", @"MacOSX.Cocoa", @"none", @"YES", @"direct", nil];
-	NSArray *ks = [NSArray arrayWithObjects: @"type", @"version", @"toolsVersion", 
+	NSArray *ks = [NSArray arrayWithObjects: @"type", @"version", @"toolsVersion",
 		@"targetRuntime", @"propertyAccessControl", @"useAutolayout", @"customObjectInstantiationMethod", nil];
 	NSMutableDictionary *docAttrs = [NSMutableDictionary dictionaryWithObjects: os forKeys: ks];
-	XMLDocument *document = [[XMLDocument alloc] initWithName: @"document"]; // value: nil attributes: docAttrs elements: nil];
-	NSMapTable *nameTable = [_object nameTable];
-#ifdef DEBUG	
-	NSArray *values = NSAllMapTableValues(nameTable);
-#endif
-	NSArray *keys = NSAllMapTableKeys(nameTable);
+	XMLDocument *document = [[XMLDocument alloc] initWithName: @"document"];
+	NSArray *nameTable = (_object != nil && [_object respondsToSelector: @selector(names)]) ? [_object names] : nil;
+	NSArray *keys = [nameTable allKeys];
 	NSEnumerator *en = [keys objectEnumerator];
 	XMLNode *dependencies = [[XMLNode alloc] initWithName: @"dependencies"];
 	XMLNode *deployment = [[XMLNode alloc] initWithName: @"deployment"];
@@ -314,12 +293,6 @@ void PrintMapTableOids(NSMapTable *mt)
 	XMLNode *applicationPlaceholder = [[XMLNode alloc] initWithName: @"customObject"];
 	id o = nil;
 
-#ifdef DEBUG
-	NSLog(@"values = %@", values);
-	NSLog(@"keys = %@", keys);
-#endif
-
-	// Create objects element...
 	[document setAttributes: docAttrs];
 	[deployment addAttribute: @"identifier" value: @"macosx"];
 	[plugIn addAttribute: @"identifier" value: @"com.apple.InterfaceBuilder.CocoaPlugin"];
@@ -332,43 +305,23 @@ void PrintMapTableOids(NSMapTable *mt)
 	[document addElement: dependencies];
 	[document addElement: objects];
 
-	//
-	// Iterate over all objects in the map table...
-	//
-	// NOTE: At first this is confusing and it looks backwards...
-	//   it's important to remember that in the maptable in a nib, the
-	//   keys are the objects.   This table maps the objects back to their
-	//   symbolic names in the nib file.
-	//
 	while ((o = [en nextObject]) != nil)
 	{
 		NSString *label = NSMapGet(nameTable, o);
-	
-		if ([o isKindOfClass: [NSWindowTemplate class]])
-		{
-			XMLNode *window = [o toXMLWithParser: self];
 
-			[objects addElement: window];
-			
-			[self addConnectionsForObject: o toNode: window];
-		}
-		else if ([o isKindOfClass: [NSCustomObject class]])
+		if ([o isKindOfClass: [NSCustomObject class]])
 		{
 			XMLNode *co = [o toXMLWithParser: self];
-
 			[co addAttribute:@"userLabel" value: label];
 			[objects addElement: co];
-			
 			[self addConnectionsForObject: o toNode: co];
 		}
 		else if ([o isKindOfClass: [NSMenuTemplate class]])
 		{
 			XMLNode *menu = [o toXMLWithParser: self];
-
 			[menu addAttribute: @"title" value: @"Main Menu"];
 			[menu addAttribute: @"systemMenu" value: @"main"];
 			[objects addElement: menu];
-
 			[self addConnectionsForObject: o toNode: menu];
 		}
 		else
@@ -377,13 +330,30 @@ void PrintMapTableOids(NSMapTable *mt)
 		}
 	}
 
-	// Add first responder...
+	if (_connections != nil)
+	{
+		for (id c in _connections)
+		{
+			id dst = [c destination];
+			id src = [c source];
+			for (id target in [NSArray arrayWithObjects: dst, src, nil])
+			{
+				if ([target isKindOfClass: [NSWindowTemplate class]]
+				 && [self isObjectProcessed: target] == NO)
+				{
+					XMLNode *window = [target toXMLWithParser: self];
+					[objects addElement: window];
+					[self addConnectionsForObject: target toNode: window];
+				}
+			}
+		}
+	}
+
 	[firstResponder addAttribute: @"customClass" value: @"FirstResponder"];
 	[firstResponder addAttribute: @"userLabel" value: @"First Responder"];
 	[firstResponder addAttribute: @"id" value: @"-1"];
 	[objects addElement: firstResponder];
 
-	// Add application placeholder...
 	[applicationPlaceholder addAttribute: @"customClass" value: @"NSApplication"];
 	[applicationPlaceholder addAttribute: @"userLabel" value: @"Application"];
 	[applicationPlaceholder addAttribute: @"id" value: @"-3"];

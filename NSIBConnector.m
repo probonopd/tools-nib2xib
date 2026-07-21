@@ -21,59 +21,36 @@
  * USA.
  */
 
-// This file is part of GNUstep
-
-#import <Foundation/Foundation.h>
-
 #import "NSIBConnector.h"
 #import "OidProvider.h"
 #import "XMLNode.h"
 
-@implementation NSIBOutletConnector (toXML)
+@implementation NSNibOutletConnector (toXML)
 
 - (XMLNode *) toXMLWithParser: (id<OidProvider>)p
 {
-	XMLNode *node = [[XMLNode alloc] initWithName: @"outlet"];
+    XMLNode *node = [[XMLNode alloc] initWithName: @"outlet"];
 
-	[node addAttribute: @"property" value: [self label]];
-	[node addAttribute: @"destination" value: [p oidForObject: [self destination]]];
-	[node addAttribute: @"id" value: [p oidString]];
+    [node addAttribute: @"property" value: [self label]];
+    [node addAttribute: @"destination" value: [p oidForObject: [self destination]]];
+    [node addAttribute: @"id" value: [p oidString]];
 
-	return node;
+    return node;
 }
 
 @end
 
-@implementation NSIBControlConnector (toXML)
+@implementation NSNibControlConnector (toXML)
 
 - (XMLNode *) toXMLWithParser: (id<OidProvider>)p
 {
-	XMLNode *node = [[XMLNode alloc] initWithName: @"action"];
+    XMLNode *node = [[XMLNode alloc] initWithName: @"action"];
 
-	[node addAttribute: @"selector" value: [self label]];
-	[node addAttribute: @"target" value: [p oidForObject: [self destination]]];
-	[node addAttribute: @"id" value: [p oidString]];
-	
-	return node;
-}
+    [node addAttribute: @"selector" value: [self label]];
+    [node addAttribute: @"target" value: [p oidForObject: [self destination]]];
+    [node addAttribute: @"id" value: [p oidString]];
 
-@end
-
-@implementation NSIBConnector (toXML)
-
-- (id) source
-{
-	return source;
-}
-
-- (id) destination
-{
-	return destination;
-}
-
-- (NSString *) label
-{
-	return label;
+    return node;
 }
 
 @end

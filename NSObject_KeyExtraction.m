@@ -515,19 +515,19 @@
             unsigned int mask = [(NSView *)self autoresizingMask];
             node = [[XMLNode alloc] initWithName: k];
             [node addAttribute: @"key" value: k];
-            if (mask | NSViewMaxXMargin)
+            if (mask & NSViewMaxXMargin)
             {
               [node addAttribute: @"flexibleMaxX" value: @"YES"];
             }
-            else if (mask | NSViewMaxYMargin)
+            if (mask & NSViewMaxYMargin)
             {
               [node addAttribute: @"flexibleMaxY" value: @"YES"];        
             }
-            else if (mask | NSViewMinXMargin)
+            if (mask & NSViewMinXMargin)
             {
               [node addAttribute: @"flexibleMinY" value: @"YES"];           
             }
-            else if (mask | NSViewMinYMargin)
+            if (mask & NSViewMinYMargin)
             {
               [node addAttribute: @"flexibleMinY" value: @"YES"]; 
             }

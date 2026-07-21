@@ -31,6 +31,15 @@
 
 @implementation NSMenu (toXML)
 
+- (void) setContentSize:(NSSize)size
+{
+}
+
+- (NSSize) contentSize
+{
+    return NSZeroSize;
+}
+
 - (NSSet *) keysForObject
 {
     NSSet *keys = [super keysForObject];

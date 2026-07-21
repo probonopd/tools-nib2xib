@@ -47,40 +47,6 @@
     return modifiedString;
 }
 
-- (NSString *)stringByReplacingOccurrencesOfString:(NSString *)target withString:(NSString *)replacement 
-{
-    NSMutableString *result = [NSMutableString string];
-    unsigned int searchLength = [self length];
-    NSRange searchRange = NSMakeRange(0, searchLength);
-    NSRange foundRange;
-
-    if ([target length] == 0) 
-    {
-        // If target is an empty string, just return a copy of the original string
-        return [self copy];
-    }
-
-    // Continue searching and replacing while the target is found
-    while ((foundRange = [self rangeOfString:target options:0 range:searchRange]).location != NSNotFound) 
-    {
-        unsigned int newLocation = 0;
-
-        // Append the part before the found target
-        [result appendString:[self substringWithRange:NSMakeRange(searchRange.location, foundRange.location - searchRange.location)]];
-        // Append the replacement string
-        [result appendString:replacement];
-
-        // Update the search range to the part after the found target
-        newLocation = NSMaxRange(foundRange);
-        searchRange = NSMakeRange(newLocation, searchLength - newLocation);
-    }
-
-    // Append the remaining part of the string after the last occurrence
-    [result appendString:[self substringWithRange:searchRange]];
-
-    return [NSString stringWithString:result];
-}
-
 - (NSString *)lowercaseFirstCharacter {
     // Extract the first character as a substring
     NSRange firstCharRange = NSMakeRange(0, 1);

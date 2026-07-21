@@ -26,11 +26,6 @@
 @interface NSString (Additions)
 
 - (NSString *) classNameToTagName;
-
-// Method that mimics stringByReplacingOccurrencesOfString:withString: for pre-10.0 Cocoa
-- (NSString *)stringByReplacingOccurrencesOfString:(NSString *)target withString:(NSString *)replacement;
-
-// Custom method to lowercase the first character without using modern APIs
 - (NSString *)lowercaseFirstCharacter;
 
 @end

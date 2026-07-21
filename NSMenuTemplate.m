@@ -26,6 +26,7 @@
 #import <Foundation/NSArray.h>
 #import <AppKit/NSMatrix.h>
 
+#import "NSMenuTemplate.h"
 #import "XMLNode.h"
 #import "NIBParser.h"
 

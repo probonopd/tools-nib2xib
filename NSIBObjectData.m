@@ -21,3 +21,4 @@
  * USA.
  */
 
+#import "NSIBObjectData.h"

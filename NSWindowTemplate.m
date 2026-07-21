@@ -71,7 +71,6 @@
     XMLNode *node = [[XMLNode alloc] initWithName: @"window"];
     XMLNode *frame = [XMLNode nodeForRect: wr type: @"contentRect"];
     id windowView = ([self respondsToSelector: @selector(view)]) ? [self view] : nil;
-    XMLNode *viewNode = [[XMLNode alloc] initWithName: @"view"];
     NSString *title = ([self respondsToSelector: @selector(title)]) ? [self title] : nil;
 
     [node addAttribute: @"id" value: oid];
@@ -88,11 +87,21 @@
         }
     }
 
-    [viewNode addAttribute: @"id" value: [parser oidForObject: windowView]];
-    [viewNode addAttribute: @"key" value: @"contentView"];
-
-    [node addElement: frame];
-    [node addElement: viewNode];
+    if (windowView != nil)
+    {
+        XMLNode *contentNode = [windowView toXMLWithParser: parser];
+        [contentNode addAttribute: @"key" value: @"contentView"];
+        [node addElement: frame];
+        [node addElement: contentNode];
+    }
+    else
+    {
+        XMLNode *viewNode = [[XMLNode alloc] initWithName: @"view"];
+        [viewNode addAttribute: @"id" value: [parser oidString]];
+        [viewNode addAttribute: @"key" value: @"contentView"];
+        [node addElement: frame];
+        [node addElement: viewNode];
+    }
 
     return node;
 }

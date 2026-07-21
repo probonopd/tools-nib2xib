@@ -281,8 +281,8 @@ void PrintMapTable(NSMapTable *mt)
 		@"targetRuntime", @"propertyAccessControl", @"useAutolayout", @"customObjectInstantiationMethod", nil];
 	NSMutableDictionary *docAttrs = [NSMutableDictionary dictionaryWithObjects: os forKeys: ks];
 	XMLDocument *document = [[XMLDocument alloc] initWithName: @"document"];
-	NSArray *nameTable = (_object != nil && [_object respondsToSelector: @selector(names)]) ? [_object names] : nil;
-	NSArray *keys = [nameTable allKeys];
+	NSMapTable *nameTable = (_object != nil && [_object respondsToSelector: @selector(names)]) ? (NSMapTable *)[_object names] : nil;
+	NSArray *keys = (nameTable != nil) ? NSAllMapTableKeys(nameTable) : nil;
 	NSEnumerator *en = [keys objectEnumerator];
 	XMLNode *dependencies = [[XMLNode alloc] initWithName: @"dependencies"];
 	XMLNode *deployment = [[XMLNode alloc] initWithName: @"deployment"];

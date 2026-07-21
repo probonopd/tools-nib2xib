@@ -20,7 +20,6 @@ nib2xib_OBJC_FILES = \
 	NSMatrix_Additions.m \
 	NSCell_Additions.m \
 	NSBox_Additions.m \
-	NSMenuPanel_Additions.m \
 	NSMenu_Additions.m
 
 nib2xib_TOOL_LIBS = -lgnustep-gui -lgnustep-base

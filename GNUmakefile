@@ -1,9 +1,9 @@
 include $(GNUSTEP_MAKEFILES)/common.make
 
-TOOL_NAME = nib2xib
+TOOL_NAME = uiconvert
 
-nib2xib_OBJC_FILES = \
-	nib2xib_main.m \
+uiconvert_OBJC_FILES = \
+	uiconvert_main.m \
 	NIBParser.m \
 	NSIBObjectData.m \
 	XMLDocument.m \
@@ -21,9 +21,10 @@ nib2xib_OBJC_FILES = \
 	NSCell_Additions.m \
 	NSBox_Additions.m \
 	NSMenu_Additions.m \
-	UIPlistWriter.m
+	UIPlistWriter.m \
+	UIPlistReader.m
 
-nib2xib_TOOL_LIBS = -lgnustep-gui -lgnustep-base
+uiconvert_TOOL_LIBS = -lgnustep-gui -lgnustep-base
 
 include $(GNUSTEP_MAKEFILES)/tool.make
 

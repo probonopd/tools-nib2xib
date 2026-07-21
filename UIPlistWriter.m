@@ -333,8 +333,8 @@ static NSSet *skippedPropertyNames(void)
 
 - (NSString *) string
 {
-  NSMapTable *objects = [_objectData objects];
-  NSArray *allObjects = NSAllMapTableValues(objects);
+  NSMapTable *objects = [_objectData oids];
+  NSArray *allObjects = NSAllMapTableKeys(objects);
 
   NSMutableString *result = [NSMutableString string];
 
@@ -351,7 +351,7 @@ static NSSet *skippedPropertyNames(void)
   else
     [result appendString: @"        root = 0;\n\n"];
 
-  // Objects array - sort by ID for deterministic output
+  // Objects array - list all non-inline objects that have oids
   NSMutableArray *sortedObjects = [NSMutableArray array];
   for (id obj in allObjects)
   {

@@ -5,8 +5,8 @@ static NSString *
 findTool(NSString *cwd)
 {
   NSArray *candidates = [NSArray arrayWithObjects:
-    [cwd stringByAppendingPathComponent: @"../obj/nib2xib"],
-    [cwd stringByAppendingPathComponent: @"../../obj/nib2xib"],
+    [cwd stringByAppendingPathComponent: @"../obj/uiconvert"],
+    [cwd stringByAppendingPathComponent: @"../../obj/uiconvert"],
     nil];
   NSEnumerator *en = [candidates objectEnumerator];
   NSString *path;
@@ -43,7 +43,7 @@ main()
     }
 
   NSString *toolPath = findTool(cwd);
-  PASS(toolPath != nil, "Found nib2xib binary");
+  PASS(toolPath != nil, "Found uiconvert binary");
   if (toolPath == nil)
     {
       DESTROY(arp);
@@ -53,14 +53,18 @@ main()
   NSString *dpNib = [cwd stringByAppendingPathComponent: @"DesktopPref.nib"];
   NSString *tnNib = [cwd stringByAppendingPathComponent: @"Test-nib.nib"];
 
-  NSString *dpXib = @"/tmp/nib2xib_dp.xib";
-  NSString *dpXib2 = @"/tmp/nib2xib_dp_2.xib";
-  NSString *tnXib = @"/tmp/nib2xib_tn.xib";
-  NSString *dpPlist = @"/tmp/nib2xib_dp.uiplist";
-  NSString *dpPlist2 = @"/tmp/nib2xib_dp_2.uiplist";
-  NSString *tnPlist = @"/tmp/nib2xib_tn.uiplist";
+  NSString *dpXib = @"/tmp/uiconvert_dp.xib";
+  NSString *dpXib2 = @"/tmp/uiconvert_dp_2.xib";
+  NSString *tnXib = @"/tmp/uiconvert_tn.xib";
+  NSString *dpPlist = @"/tmp/uiconvert_dp.uiplist";
+  NSString *dpPlist2 = @"/tmp/uiconvert_dp_2.uiplist";
+  NSString *tnPlist = @"/tmp/uiconvert_tn.uiplist";
+  NSString *dpNib2 = @"/tmp/uiconvert_dp_re.nib";
+  NSString *dpPlist3 = @"/tmp/uiconvert_dp_re.uiplist";
+  NSString *plistOrig = nil;
+  NSString *plistRe = nil;
 
-  START_SET("nib2xib XIB conversion")
+  START_SET("uiconvert XIB conversion")
 
     BOOL dpExists = [[NSFileManager defaultManager] fileExistsAtPath: dpNib];
     PASS(dpExists, "DesktopPref.nib fixture exists");
@@ -84,9 +88,9 @@ main()
     PASS(tnXibContent != nil, "Test-nib XIB output is readable");
     PASS([tnXibContent hasPrefix: @"<?xml"], "Test-nib XIB starts with <?xml>");
 
-  END_SET("nib2xib XIB conversion")
+  END_SET("uiconvert XIB conversion")
 
-  START_SET("nib2xib UIPlist conversion")
+  START_SET("uiconvert UIPlist conversion")
 
     PASS(runTool(toolPath, dpNib, dpPlist), "DesktopPref.nib -> .uiplist succeeds");
 
@@ -110,19 +114,45 @@ main()
     PASS([tnPlistContent rangeOfString: @"objects ="].location != NSNotFound,
       "Test-nib UIPlist has objects array");
 
-  END_SET("nib2xib UIPlist conversion")
+  END_SET("uiconvert UIPlist conversion")
 
-  START_SET("nib2xib determinism")
+  START_SET("uiconvert reverse: uiplist -> nib")
+
+    PASS(runTool(toolPath, dpPlist, dpNib2),
+      "DesktopPref.uiplist -> .nib succeeds");
+
+    BOOL nibExists = [[NSFileManager defaultManager] fileExistsAtPath: dpNib2];
+    PASS(nibExists, "Rebuilt .nib directory exists");
+
+    BOOL koExists = [[NSFileManager defaultManager]
+      fileExistsAtPath: [dpNib2 stringByAppendingPathComponent: @"keyedobjects.nib"]];
+    PASS(koExists, "Rebuilt nib contains keyedobjects.nib");
+
+    // Verify it's valid XML plist
+    NSString *keyedContent = [NSString stringWithContentsOfFile:
+      [dpNib2 stringByAppendingPathComponent: @"keyedobjects.nib"]];
+    PASS([keyedContent hasPrefix: @"<?xml"],
+      "Rebuilt keyedobjects.nib starts with XML declaration");
+
+    // Roundtrip structural check
+    PASS(runTool(toolPath, dpNib2, dpPlist3),
+      "Rebuilt nib -> .uiplist succeeds");
+
+    plistOrig = [NSString stringWithContentsOfFile: dpPlist];
+    plistRe = [NSString stringWithContentsOfFile: dpPlist3];
+    PASS(plistRe != nil, "Roundtrip uiplist is readable");
+    PASS([plistRe rangeOfString: @"objects ="].location != NSNotFound,
+      "Roundtrip uiplist has objects array");
+
+  END_SET("uiconvert reverse: uiplist -> nib")
+
+  START_SET("uiconvert determinism")
 
     PASS(runTool(toolPath, dpNib, dpXib2), "Second XIB conversion succeeds");
     NSString *xib = [NSString stringWithContentsOfFile: dpXib];
     NSString *xib2 = [NSString stringWithContentsOfFile: dpXib2];
     BOOL xibSame = [xib isEqualToString: xib2];
     PASS(xibSame, "XIB output is deterministic");
-    if (!xibSame)
-      {
-        fprintf(stderr, "(XIB non-determinism may be due to ASLR - oids use [obj hash])\n");
-      }
 
     PASS(runTool(toolPath, dpNib, dpPlist2), "Second UIPlist conversion succeeds");
     NSString *plistFile1 = [NSString stringWithContentsOfFile: dpPlist];
@@ -130,14 +160,12 @@ main()
     PASS([plistFile1 isEqualToString: plistFile2],
       "UIPlist output is deterministic");
 
-  END_SET("nib2xib determinism")
+  END_SET("uiconvert determinism")
 
-  START_SET("nib2xib structure validation")
+  START_SET("uiconvert structure validation")
 
     NSString *plist = [NSString stringWithContentsOfFile: dpPlist];
 
-    // Count id and isa using line-anchored regex
-    // Avoiding false positives like 'coordinates_valid = 1;' matching 'id = 1;'
     NSRegularExpression *idRegex = [NSRegularExpression
       regularExpressionWithPattern: @"^\\s*id = \\d+;$"
       options: NSRegularExpressionAnchorsMatchLines error: NULL];
@@ -162,7 +190,7 @@ main()
     PASS([xib rangeOfString: @"<dependencies>"].location != NSNotFound,
       "XIB has dependencies section");
 
-  END_SET("nib2xib structure validation")
+  END_SET("uiconvert structure validation")
 
   DESTROY(arp);
   return 0;

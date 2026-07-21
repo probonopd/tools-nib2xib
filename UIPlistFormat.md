@@ -2,7 +2,7 @@
 
 **Version 1.0**
 
-UIPlist is a **git-friendly, human-readable, diff-able** representation of the archived object graph inside an NSKeyedArchiver-format `.nib` bundle. It is produced by `nib2xib` when the output file has a `.uiplist` extension.
+UIPlist is a **git-friendly, human-readable, diff-able** representation of the archived object graph inside an NSKeyedArchiver-format `.nib` bundle. It is produced by `uiconvert` when the output file has a `.uiplist` extension, and can be converted back to `.nib` with `uiconvert input.uiplist output.nib`.
 
 ## Design goals
 
@@ -117,7 +117,7 @@ Runtime ephemeral values — in particular pointer/memory addresses from `-[NSOb
 
 ## Determinism
 
-Given the same `.nib` input, `nib2xib` always produces byte-identical `.uiplist` output. This is ensured by:
+Given the same `.nib` input, `uiconvert` always produces byte-identical `.uiplist` output. This is ensured by:
 
 1. Object ID sorting (entries sorted by id)
 2. Key sorting within each object's `keys` dictionary
@@ -163,7 +163,7 @@ Output structure:
 | Plugin metadata | Not included | Included (dependencies, plugIn, capability) |
 | File size (DesktopPref.nib) | ~1664 lines | ~X lines |
 | Deterministic | Yes | Yes (since v1.0) |
-| Loadable by GNUstep | No (tool format) | Yes (`NSBundle loadNibNamed:`) |
+| Loadable by GNUstep | No (debug format) | Yes (`NSBundle loadNibNamed:`) |
 
 ## Limitations
 

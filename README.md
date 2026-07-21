@@ -1,18 +1,24 @@
-# nib2xib
+# uiconvert
 
-nib2xib converts modern Apple NSKeyedArchiver-format `.nib` bundles (as produced by Xcode and Interface Builder) into human-readable/editable formats on GNUstep/Linux.
+`uiconvert` converts between `.nib` bundles (Apple NSKeyedArchiver-format), `.xib` (Interface Builder XML), and `.uiplist` (git-friendly object graph dump) on GNUstep/Linux.
 
-This tool is **based on** tools-nib2xib by Gregory John Casamento and the Free Software Foundation, which originally targeted OPENSTEP 4.2 typed-stream nibs. The current version adds support for NSKeyedArchiver-format nibs and produces two output formats:
+This tool is **based on** tools-nib2xib by Gregory John Casamento and the Free Software Foundation, which originally targeted OPENSTEP 4.2 typed-stream nibs. The current version adds NSKeyedArchiver support and multiple conversion directions.
 
-- **XIB** — Apple's XML-based Interface Builder format, loadable by GNUstep's `NSNibLoading`.
-- **UIPlist** — An OpenStep property list representation of the full archived object graph (see [UIPlistFormat.md](UIPlistFormat.md)).
+## Supported conversions
+
+| Direction | Description |
+|-----------|-------------|
+| `.nib` → `.xib` | Interface Builder XML, loadable by GNUstep's `NSNibLoading` |
+| `.nib` → `.uiplist` | Git-friendly object graph dump (see [UIPlistFormat.md](UIPlistFormat.md)) |
+| `.uiplist` → `.nib` | Reconstruct `.nib` bundle from `.uiplist` |
+
+The direction is auto-detected from the file extensions.
 
 ## Building
 
 ### Prerequisites
 
-- [GNUstep](http://gnustep.org) base library (`libgnustep-base`)
-- GNUstep GUI library (`libgnustep-gui`)
+- [GNUstep](http://gnustep.org) base + gui libraries
 - GNUstep Make (`gnustep-make`)
 
 ### Build
@@ -20,56 +26,50 @@ This tool is **based on** tools-nib2xib by Gregory John Casamento and the Free S
     source /usr/share/GNUstep/Makefiles/GNUstep.sh
     make
 
-### Build and test
+### Test
 
     make check
 
-The test suite converts two real-world `.nib` files to both XIB and UIPlist, validates structural correctness, and checks determinism (same input → same output).
+The test suite converts two real-world `.nib` files through all supported directions, validates structural correctness, and checks determinism (same input → same output).
 
 ## Usage
 
-    nib2xib input.nib output.xib
-    nib2xib input.nib output.uiplist
-
-The tool auto-detects the output format from the file extension.
+    uiconvert input.nib output.xib
+    uiconvert input.nib output.uiplist
+    uiconvert input.uiplist output.nib
 
 ### Input
 
-A `.nib` bundle (directory) containing a `keyedobjects.nib` file — the NSKeyedArchiver-format XML archive produced by Apple's `ibtool` and Xcode.
-
-### Output formats
-
-| Extension | Format | Description |
-|-----------|--------|-------------|
-| `.xib`    | XML    | Apple Interface Builder document, loadable by GNUstep's `NSBundle +loadNibNamed:owner:topLevelObjects:` |
-| `.uiplist`| OpenStep property list | Full archived object graph with `@oid` references. See [UIPlistFormat.md](UIPlistFormat.md) for the spec. |
+- `.nib`: a bundle (directory) containing `keyedobjects.nib` — the NSKeyedArchiver-format archive.
+- `.uiplist`: an OpenStep property list file with `@oid` references.
 
 ## Architecture
 
-nib2xib uses GNUstep's NSKeyedUnarchiver to decode the archive, then walks the live object graph via NSIBObjectData, NSWindowTemplate, and related AppKit classes. Format-specific writers serialize the graph:
+`uiconvert` uses GNUstep's NSKeyedUnarchiver to decode `.nib` archives, then walks the live object graph via NSIBObjectData, NSWindowTemplate, and related AppKit classes:
 
-- **XIB**: `NIBParser` → recursive `toXMLWithParser:` calls on each object category → `XMLDocument`
-- **UIPlist**: `UIPlistWriter` reads the raw object/oid/name tables and emits sorted OpenStep property list output
+- **XIB**: `NIBParser` → recursive `toXMLWithParser:` calls → `XMLDocument`
+- **UIPlist (write)**: `UIPlistWriter` reads the object/oid/name tables and emits sorted OpenStep property list output
+- **UIPlist (read)**: `UIPlistReader` parses the `.uiplist` format and reconstructs an NSKeyedArchiver XML archive
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `NIBParser.h/.m` | NSKeyedArchiver decoder, oid/name table access, XML document generation |
+| `uiconvert_main.m` | Tool entry point, conversion direction detection |
+| `NIBParser.h/.m` | NSKeyedArchiver decoder, oid/name table access, XIB generation |
 | `NSIBObjectData.h/.m` | Accessors for the decoded IB object data |
-| `NSWindowTemplate.h/.m` | Window serialization with recursive view hierarchy |
-| `NSView_Additions.h/.m` | View hierarchy traversal with cycle detection |
+| `UIPlistWriter.h/.m` | OpenStep property list output |
+| `UIPlistReader.h/.m` | UIPlist → .nib reverse conversion |
+| `NSWindowTemplate.h/.m` | Window serialization with view hierarchy |
+| `NSView_Additions.h/.m` | View hierarchy with cycle detection |
 | `NSMenuTemplate.h/.m` | Menu serialization |
 | `NSCustomObject.h/.m` | Placeholder objects (File's Owner, etc.) |
-| `UIPlistWriter.h/.m` | OpenStep property list output format |
-| `XMLDocument.h/.m`, `XMLElement.h/.m`, `XMLNode.h/.m` | XML tree model used for XIB output |
-| Various `*_Additions.h/.m` | Categories on AppKit classes for key extraction and serialization |
-| `OidProvider.h` | Protocol for oid lookup abstraction |
-| `nib2xib_main.m` | Tool entry point, format detection |
-| `Tests/` | GNUstep-style test suite (run with `make check`) |
+| `XMLDocument.h/.m`, `XMLElement.h/.m`, `XMLNode.h/.m` | XML tree model for XIB output |
+| Various `*_Additions.h/.m` | Categories on AppKit classes |
+| `Tests/` | GNUstep-style test suite |
 
 ## License
 
 GPL-3.0-or-later (see [COPYINGv3](COPYINGv3)).
 
-New files (UIPlistWriter) are BSD-2-Clause OR GPL-3.0-or-later.
+New files (UIPlistWriter, UIPlistReader) are BSD-2-Clause OR GPL-3.0-or-later.

@@ -22,7 +22,8 @@ uiconvert_OBJC_FILES = \
 	NSBox_Additions.m \
 	NSMenu_Additions.m \
 	UIPlistWriter.m \
-	UIPlistReader.m
+	UIPlistReader.m \
+	GormWriter.m
 
 uiconvert_TOOL_LIBS = -lgnustep-gui -lgnustep-base
 

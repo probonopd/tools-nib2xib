@@ -28,6 +28,7 @@
 #import "NIBParser.h"
 #import "UIPlistWriter.h"
 #import "UIPlistReader.h"
+#import "GormWriter.h"
 
 static void
 usage(void)
@@ -39,6 +40,7 @@ usage(void)
   puts("  .nib   \342\206\222 .uiplist   git-friendly object graph dump");
   puts("  .gorm  \342\206\222 .xib       GNUstep Gorm file to XIB");
   puts("  .uiplist \342\206\222 .nib     restore .nib bundle from .uiplist");
+  puts("  .uiplist \342\206\222 .gorm    restore .gorm bundle from .uiplist");
 }
 
 int main(int argc, const char *argv[]) 
@@ -60,6 +62,29 @@ int main(int argc, const char *argv[])
   NSString *outputPath = [NSString stringWithCString: argv[2]];
   NSString *inputExt = [[inputPath pathExtension] lowercaseString];
   NSString *outputExt = [[outputPath pathExtension] lowercaseString];
+
+  // .uiplist → .gorm
+  if ([inputExt isEqualToString: @"uiplist"]
+    && [outputExt isEqualToString: @"gorm"])
+    {
+      GormWriter *writer = [[GormWriter alloc] initWithContentsOfFile: inputPath];
+      if (writer == nil)
+        {
+          NSLog(@"Failed to initialize GormWriter");
+          [pool release];
+          return 1;
+        }
+      BOOL ok = [writer writeToGorm: outputPath];
+      [writer release];
+      if (!ok)
+        {
+          NSLog(@"Failed to write %@", outputPath);
+          [pool release];
+          return 1;
+        }
+      [pool release];
+      return 0;
+    }
 
   // .uiplist → .nib
   if ([inputExt isEqualToString: @"uiplist"]

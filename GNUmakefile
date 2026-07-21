@@ -29,5 +29,16 @@ uiconvert_TOOL_LIBS = -lgnustep-gui -lgnustep-base
 
 include $(GNUSTEP_MAKEFILES)/tool.make
 
+# uitogorm - headless uiplist -> gorm converter
+TOOL_NAME = uitogorm
+
+uitogorm_OBJC_FILES = uitogorm_main.m
+uitogorm_TOOL_LIBS = -lGormCore -lInterfaceBuilder -lGormObjCHeaderParser -lgnustep-gui -lgnustep-base -lobjc
+uitogorm_INCLUDE_DIRS = -I/System/Library/Headers
+ADDITIONAL_LIB_DIRS += -L/Local/Library/Libraries
+ADDITIONAL_LIB_DIRS += -L/Developer/Library/Sources/apps-gorm/GormObjCHeaderParser/obj
+
+include $(GNUSTEP_MAKEFILES)/tool.make
+
 check::
 	$(MAKE) -C Tests check

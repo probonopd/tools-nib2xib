@@ -126,13 +126,6 @@ int main(int argc, const char *argv[])
           [pool release];
           return 1;
         }
-      if ([inputExt isEqualToString: @"gorm"] && [outputExt isEqualToString: @"uiplist"])
-	{
-	  NSLog(@"UIPlist output from .gorm input is not supported");
-	  [pool release];
-	  return 1;
-	}
-
       NSString *outputStr = nil;
 
       if ([outputExt isEqualToString: @"uiplist"])
